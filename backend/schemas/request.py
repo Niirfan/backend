@@ -33,7 +33,7 @@ class RequestCreate(BaseModel):
 class RequestResponse(BaseModel):
     mat_req_id: int
     mat_req_code: str
-    user_id: int
+    user_id: str
     req_date: datetime
     req_status: str
     total_price: float

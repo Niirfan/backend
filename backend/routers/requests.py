@@ -19,6 +19,8 @@ from backend.database import get_db
 from backend.models.request import MaterialReq, MaterialReqDetail, MaterialReserved
 from backend.schemas.request import RequestCreate, RequestResponse
 from backend.login.dependencies import get_current_user
+from backend.models.material import Material
+from backend.models.users import User
 
 router = APIRouter(prefix="/requests", tags=["Material Requests"])
 
@@ -88,12 +90,28 @@ def get_my_requests(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # ดึงเฉพาะใบเบิกที่ user_id ตรงกับคนที่ล็อกอินอยู่ เรียงจากใหม่ไปเก่า
-    requests = db.query(MaterialReq)\
+    results = db.query(MaterialReq, User)\
+        .join(User, MaterialReq.user_id == User.emp_code)\
         .filter(MaterialReq.user_id == current_user["emp_code"])\
         .order_by(MaterialReq.req_date.desc())\
         .all()
-    return requests
+
+    return [
+        {
+            "mat_req_id": req.mat_req_id,
+            "mat_req_code": req.mat_req_code,
+            "user_id": req.user_id,
+            "full_name": user.full_name,
+            "req_date": req.req_date,
+            "req_status": req.req_status,
+            "total_price": req.total_price,
+            # ✅ นับจำนวนรายการจริงจาก DB
+            "items_count": db.query(MaterialReqDetail)\
+                .filter(MaterialReqDetail.mat_req_id == req.mat_req_id)\
+                .count()
+        }
+        for req, user in results
+    ]
 
 # ---------------------------------------------------------
 # 🟢 API: ดูรายละเอียดใบเบิกแต่ละใบ (Request Detail)
@@ -104,19 +122,30 @@ def get_request_detail(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # 1. หาหัวขั้วใบเบิก
     req = db.query(MaterialReq).filter(MaterialReq.mat_req_id == req_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="ไม่พบใบเบิกนี้")
 
-    # 2. ป้องกันไม่ให้พนักงานแอบดูใบเบิกของคนอื่น (ยกเว้นแอดมินดูได้)
     if req.user_id != current_user["emp_code"] and current_user.get("role") not in ["Admin", "Superadmin"]:
         raise HTTPException(status_code=403, detail="คุณไม่มีสิทธิ์ดูใบเบิกของผู้อื่น")
 
-    # 3. หารายการของที่เบิกในใบนั้น
-    details = db.query(MaterialReqDetail).filter(MaterialReqDetail.mat_req_id == req_id).all()
-    
+    # ✅ Join ชื่อวัสดุมาด้วย
+    details = db.query(MaterialReqDetail, Material)\
+        .join(Material, MaterialReqDetail.mat_id == Material.mat_id)\
+        .filter(MaterialReqDetail.mat_req_id == req_id)\
+        .all()
+
+    items = [
+        {
+            "mat_id": detail.mat_id,
+            "mat_name": material.mat_name,  # ✅ ชื่อวัสดุจริง
+            "req_qty": detail.req_qty,
+            "approve_qty": detail.approve_qty,
+        }
+        for detail, material in details
+    ]
+
     return {
         "header": req,
-        "items": details
+        "items": items
     }

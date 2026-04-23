@@ -18,6 +18,7 @@ from backend.database import get_db
 from backend.models.users import User
 from backend.schemas.users import Token, UserLogin # <-- นำเข้าหน้ากากรับข้อมูลแบบ JSON
 from backend.login.auth_utils import verify_password, create_access_token
+from backend.login.dependencies import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -40,3 +41,13 @@ def login(login_data: UserLogin, db: Session = Depends(get_db)):
 
     # ตอนนี้ access_token มีตัวตนแล้ว return ได้ไม่พังแล้วครับ
     return {"access_token": access_token, "token_type": "bearer","role": user.user_role}
+
+@router.get("/me")
+def get_me(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.emp_code == current_user["emp_code"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="ไม่พบผู้ใช้")
+    return user

@@ -28,10 +28,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # อนุญาตทุกแหล่งที่มา (ในขั้นพัฒนา)
-    allow_credentials=True,
-    allow_methods=["*"], # อนุญาตทุกคำสั่ง (GET, POST, OPTIONS, etc.)
-    allow_headers=["*"], # อนุญาตทุก Header (รวมถึง Authorization)
+    allow_origins=["*"],  # ✅ อนุญาตทุก origin
+    allow_credentials=False,  # ⚠️ ต้องเป็น False ถ้าใช้ "*"
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth.router)
