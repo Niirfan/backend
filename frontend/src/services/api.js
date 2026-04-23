@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: 'https://pavestone-hexagram-emphasize.ngrok-free.dev', // เช็กให้ชัวร์ว่าตรงกับที่ Backend ของคุณรันอยู่
+    baseURL: 'http://127.0.0.1:8000', // เช็กให้ชัวร์ว่าตรงกับที่ Backend ของคุณรันอยู่
     headers: {
         'Content-Type': 'application/json'
     }

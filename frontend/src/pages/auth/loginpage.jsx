@@ -10,35 +10,34 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
 const handleLogin = async (e) => {
-  e.preventDefault();
-  try {
-    const response = await api.post('/auth/login', {
-      emp_code: empCode,
-      password: password
-    });
+    e.preventDefault();
+    try {
+        const response = await api.post('/auth/login', {
+            emp_code: empCode,
+            password: password
+        });
 
-    console.log("Response ทั้งหมด:", response.data); // ดูว่า role ชื่ออะไร
+        const token = response.data.access_token;
+        localStorage.setItem('access_token', token);
 
-    const token = response.data.access_token;
-    const roleFromBackend = response.data.role;
+        // 🟢 1. ดึงข้อมูลสิทธิ์ (Role) จาก Backend มาเช็ก
+        // (ปกติ Backend ของเราส่งสิทธิ์กลับมาใน Token หรือเพิ่ม Field role มาให้)
+       const roleFromBackend = response.data.role; 
 
-    localStorage.setItem('access_token', token);
-    
-    // ✅ เพิ่มบรรทัดนี้ — เซฟ user object ให้ RequireAdmin อ่านได้
-    localStorage.setItem('user', JSON.stringify({ role: roleFromBackend }));
+        alert("ล็อกอินสำเร็จ! 🎉");
+        
+        // 🟢 2. สั่งเปลี่ยนหน้า (Navigate) ตามสิทธิ์
+        if (roleFromBackend === "Admin" || roleFromBackend === "Superadmin") {
+            navigate('/admin/dashboard'); // 👈 ใส่ Path หน้า Admin ของรุ่นพี่
+        } else {
+            navigate('/user/home'); // 👈 ใส่ Path หน้าพนักงานทั่วไป
+        }
 
-    alert("ล็อกอินสำเร็จ! 🎉");
-
-    if (roleFromBackend === "Admin" || roleFromBackend === "Superadmin") {
-      navigate('/admin/dashboard');
-    } else {
-      navigate('/user/home');
+    } catch (error) {
+        console.error("Login failed:", error);
+        alert("รหัสพนักงานหรือรหัสผ่านไม่ถูกต้อง");
     }
 
-  } catch (error) {
-    const msg = error.response?.data?.detail || "รหัสพนักงานหรือรหัสผ่านไม่ถูกต้อง";
-    alert(msg);
-  }
 };
   return (
     <div className="min-h-screen bg-[#F8F9FA] flex flex-col items-center justify-center p-4 relative">

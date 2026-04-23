@@ -1,149 +1,107 @@
-// context/CartContext.jsx
-// ================================================================
-//  Global state สำหรับทั้งระบบ:
-//  - cart         : สินค้าในตะกร้า
-//  - requests     : รายการคำขอเบิกที่ส่งแล้ว
-//  - history      : ประวัติการเบิกที่เสร็จสิ้น / ถูกปฏิเสธ
-// ================================================================
+import React, { createContext, useContext, useState } from "react";
 
-import { createContext, useContext, useState, useCallback } from "react";
-
-const CartContext = createContext(null);
+// สร้าง Context สำหรับเก็บข้อมูลตะกร้าและรายการคำขอ
+const CartContext = createContext();
 
 export function CartProvider({ children }) {
-  const [cart, setCart] = useState([]);           // items in cart
-  const [requests, setRequests] = useState([]);   // submitted requests
-  const [history, setHistory] = useState([]);     // completed / rejected
+  const [cartItems, setCartItems] = useState([]);
+  
+  // ข้อมูลรายการคำขอ (ใส่ข้อมูลจำลองเริ่มต้นเพื่อให้เห็นภาพในหน้า History และ Request)
+  const [requests, setRequests] = useState([
+    {
+      id: "REQ68001",
+      date: "27/10/2567",
+      itemsCount: 5,
+      branch: "001 หาดใหญ่",
+      status: "pending", // รอดำเนินการ
+      items: []
+    },
+    {
+      id: "REQ68002",
+      date: "28/10/2567",
+      itemsCount: 2,
+      branch: "002 สงขลา",
+      status: "completed", // สำเร็จ (จะโชว์ในหน้าประวัติด้วย)
+      items: []
+    }
+  ]);
 
-  // ── CART ──────────────────────────────────────────────────────
-
-  /** เพิ่มสินค้าลงตะกร้า ถ้ามีอยู่แล้วให้เพิ่มจำนวน */
-  const addToCart = useCallback((material) => {
-    setCart((prev) => {
-      const exists = prev.find((i) => i.id === material.mat_id);
-      if (exists) {
+  // ฟังก์ชันเพิ่มสินค้าลงตะกร้า
+  const addToCart = (item) => {
+    setCartItems((prev) => {
+      const existingItem = prev.find((i) => i.id === item.id);
+      if (existingItem) {
         return prev.map((i) =>
-          i.id === material.mat_id
-            ? { ...i, quantity: Math.min(i.quantity + 1, i.maxStock) }
-            : i
+          i.id === item.id ? { ...i, quantity: Math.min(i.quantity + 1, i.maxStock || 99) } : i
         );
       }
-      return [
-        ...prev,
-        {
-          id: material.mat_id,
-          name: material.mat_name,
-          unit: material.mat_unit ?? "ชิ้น",
-          quantity: 1,
-          maxStock: material.balance_qty,
-          image: material.image,
-        },
-      ];
+      return [...prev, { ...item, quantity: 1 }];
     });
-  }, []);
+  };
 
-  /** อัปเดตจำนวนสินค้าในตะกร้า */
-  const updateCartQuantity = useCallback((id, qty) => {
-    setCart((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, quantity: qty } : i))
+  // ฟังก์ชันลบสินค้าจากตะกร้า
+  const removeFromCart = (id) => {
+    setCartItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // ฟังก์ชันอัปเดตจำนวนสินค้า
+  const updateQuantity = (id, quantity) => {
+    setCartItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, quantity: parseInt(quantity) || 1 } : item))
     );
-  }, []);
+  };
 
-  /** ลบสินค้าออกจากตะกร้า */
-  const removeFromCart = useCallback((id) => {
-    setCart((prev) => prev.filter((i) => i.id !== id));
-  }, []);
+  // ฟังก์ชันล้างตะกร้า
+  const clearCart = () => setCartItems([]);
 
-  /** ล้างตะกร้าทั้งหมด */
-  const clearCart = useCallback(() => setCart([]), []);
+  // ฟังก์ชันเพิ่มรายการคำขอใหม่ (เรียกใช้ตอนกดยืนยันการเบิก)
+  const addRequest = (newRequest) => {
+    setRequests((prev) => [newRequest, ...prev]);
+  };
 
-  // ── REQUESTS ──────────────────────────────────────────────────
+  // ฟังก์ชันอัปเดตสถานะคำขอ (สำหรับ Admin หรือการทดสอบเปลี่ยนสถานะ)
+  const updateRequestStatus = (requestId, newStatus) => {
+    setRequests((prev) =>
+      prev.map((req) =>
+        req.id === requestId ? { ...req, status: newStatus } : req
+      )
+    );
+  };
 
-  /**
-   * ส่งคำขอเบิก
-   * รับ meta: { requester, branch, note }
-   * คืนค่า requestId ที่สร้างขึ้น
-   */
-  const submitRequest = useCallback(
-    (meta = {}) => {
-      const now = new Date();
-      const dateStr = now.toLocaleDateString("th-TH", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
-      const id = `REQ-${Date.now()}`;
-
-      const newRequest = {
-        id,
-        date: dateStr,
-        requester: meta.requester ?? "ผู้ใช้",
-        branch: meta.branch ?? "สำนักงานใหญ่",
-        note: meta.note ?? "",
-        status: "pending",
-        items: cart.map((i) => ({ ...i })),
-        itemsCount: cart.length,
-      };
-
-      setRequests((prev) => [newRequest, ...prev]);
-      clearCart();
-      return id;
-    },
-    [cart, clearCart]
-  );
-
-  /**
-   * อัปเดตสถานะคำขอ
-   * newStatus: "pending" | "approved" | "processing" | "completed" | "rejected"
-   */
-  const updateRequestStatus = useCallback((requestId, newStatus) => {
-    setRequests((prev) => {
-      const updated = prev.map((r) =>
-        r.id === requestId ? { ...r, status: newStatus } : r
-      );
-
-      // ถ้า completed หรือ rejected → ย้ายไป history
-      if (newStatus === "completed" || newStatus === "rejected") {
-        const target = updated.find((r) => r.id === requestId);
-        if (target) {
-          setHistory((h) => [target, ...h]);
-          return updated.filter((r) => r.id !== requestId);
-        }
-      }
-
-      return updated;
-    });
-  }, []);
-
-  // ── VALUE ─────────────────────────────────────────────────────
+  // รวม Value ทั้งหมดที่จะส่งไปให้หน้าอื่นๆ ใช้
+  const contextValue = {
+    cartItems,
+    requests,
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    clearCart,
+    addRequest,
+    updateRequestStatus
+  };
 
   return (
-    <CartContext.Provider
-      value={{
-        // cart
-        cart,
-        addToCart,
-        updateCartQuantity,
-        removeFromCart,
-        clearCart,
-        cartCount: cart.length,
-
-        // requests
-        requests,
-        submitRequest,
-        updateRequestStatus,
-
-        // history
-        history,
-      }}
-    >
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   );
 }
 
-export function useCart() {
-  const ctx = useContext(CartContext);
-  if (!ctx) throw new Error("useCart must be used inside <CartProvider>");
-  return ctx;
-}
+// Hook สำหรับดึงข้อมูลไปใช้ในหน้าต่างๆ (เช่น หน้า History, Request, Cart)
+export const useCart = () => {
+  const context = useContext(CartContext);
+  if (!context) {
+    // กรณีไม่ได้เรียกใช้ภายใต้ CartProvider ให้ส่งค่าว่างกลับไปเพื่อไม่ให้ App พัง
+    return { 
+      cartItems: [], 
+      requests: [], 
+      addToCart: () => {}, 
+      removeFromCart: () => {}, 
+      updateQuantity: () => {}, 
+      clearCart: () => {}, 
+      addRequest: () => {},
+      updateRequestStatus: () => {}
+    }; 
+  }
+  return context;
+};
