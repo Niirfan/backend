@@ -1,36 +1,32 @@
-"""
-=============================================================================
-📝 รีวิวโค้ดโดย Antigravity (Code Review)
-ไฟล์: backend/models/master.py
-หน้าที่: สร้างพิมพ์เขียวจำลอง (Model) ของตารางฐานข้อมูลส่วนข้อมูลพื้นฐาน
+# Models สำหรับข้อมูลพื้นฐาน — สาขา, จุดบริการ, ประเภทวัสดุ
 
-✅ สิ่งที่เขียนได้ดี:
-- การตั้งชื่อ Class พิมพ์ใหญ่ ตารางพิมพ์เล็ก ชัดเจนและอ่านเข้าใจง่าย (เช่น ServicePoint -> sams_service)
-- กำหนดขนาดตัวอักษรเพื่อประหยัด Database (เช่น String(5)) ได้เหมาะสม
-
-💡 ไอเดียเพิ่มเติม (Tips):
-- ในอนาคต สาขาหรือประเภทวัสดุอาจจะไม่ได้ถูกลบทิ้ง แต่ถูก "ยกเลิกการใช้งาน" (Soft Delete)
-- ควรพิจารณาเพิ่ม Field: `is_active = Column(Boolean, default=True)` 
-- หรืออาจจะเพิ่มเวลาแก้ไขข้อมูล: `updated_at = Column(DateTime)` เพื่อให้ตรวจสอบย้อนหลังได้ (Audit)
-=============================================================================
-"""
-#กลุ่มข้อมูลพื้นฐานเพื่อเก็บข้อมูล สาขา, จุดบริการ และประเภทวัสดุ
 from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.orm import relationship  # เพิ่มบรรทัดนี้
 from backend.database import Base
 
+
 class Branch(Base):
+    """ตารางสาขา (sams_branch)"""
     __tablename__ = "sams_branch"
-    branch_id = Column(String(5), primary_key=True) # รหัสสาขา [cite: 347]
+    
+    branch_id = Column(String(5), primary_key=True)
     branch_name = Column(String(50), nullable=False)
 
+
 class ServicePoint(Base):
+    """ตารางจุดบริการ (sams_service)"""
     __tablename__ = "sams_service"
+    
     service_point_id = Column(Integer, primary_key=True)
     service_point_name = Column(String(50), nullable=False)
-    branch_id = Column(String(5), ForeignKey("sams_branch.branch_id")) # เชื่อมกับสาขา [cite: 349]
+    branch_id = Column(String(5), ForeignKey("sams_branch.branch_id"))
     service_point_code = Column(String(10))
+    branch = relationship("Branch") 
+
 
 class MaterialType(Base):
+    """ตารางประเภทวัสดุ (material_type)"""
     __tablename__ = "material_type"
-    mat_type_id = Column(Integer, primary_key=True)
-    mat_type_name = Column(String(50), nullable=False) # ชื่อประเภทวัสดุ [cite: 355]
+    
+    mat_type_id = Column(Integer, primary_key=True, autoincrement=True)
+    mat_type_name = Column(String(50), nullable=False)

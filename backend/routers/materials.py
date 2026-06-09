@@ -1,107 +1,271 @@
-"""
-=============================================================================
-📝 รีวิวโค้ดโดย Antigravity (Code Review)
-ไฟล์: backend/routers/materials.py
-หน้าที่: API จัดการระบบวัสดุ (CRUD Operations)
-
-✅ สิ่งที่เขียนได้ดี:
-- โค้ดส่วนดึงข้อมูล (`get_materials`) มีการกรองเฉพาะ `is_active == True` เป็นการทำ Soft Delete ที่ถูกต้อง
-- การสร้างข้อมูลใหม่มีการใช้ `**material.model_dump()` ช่วยให้ไม่ต้องมา Map ตัวแปรทีละตัว โค้ดจึงสะอาด
-- การอัปเดตข้อมูลใช้ `setattr()` ในการวนลูป ถือเป็นท่ายากที่เขียนได้ฉลาดและกระชับบรรทัดได้มากครับ
-=============================================================================
-"""
-from fastapi import APIRouter, Depends, HTTPException
+import os
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy import func
 
 from backend.database import get_db
-from backend.models.material import Material
-from backend.schemas.material import MaterialCreate, MaterialResponse
+from backend.models.material import Material, MaterialStock
+from backend.models.request import MaterialReserved, ReservedStatus
+from backend.schemas.material import MaterialCreate, MaterialResponse, MaterialUpdate
 from backend.login.dependencies import get_current_user, verify_admin
+from backend.models.master import MaterialType
+from backend.utils.file_validation import validate_image
+from backend.config import UPLOAD_MATERIALS
 
-# สร้าง Router (พนักงานรับออเดอร์) ประจำแผนกวัสดุ
 router = APIRouter(prefix="/materials", tags=["Materials"])
 
-# ---------------------------------------------------------
-# 🟢 1. API: ดูรายชื่อวัสดุทั้งหมด (เข้าได้ทั้ง User และ Admin)
-# ---------------------------------------------------------
-@router.get("/", response_model=List[MaterialResponse])
-def get_materials(
-    db: Session = Depends(get_db), 
-    current_user: dict = Depends(get_current_user) # 👮‍♂️ ยามคนที่ 1 (เช็กแค่ว่าล็อกอินแล้ว)
-):
-    # ดึงเฉพาะวัสดุที่ยังเปิดใช้งานอยู่ (is_active == True)
-    materials = db.query(Material).filter(Material.is_active == True).all()
-    return materials
+UPLOAD_DIR = UPLOAD_MATERIALS
 
 
-# ---------------------------------------------------------
-# 🔴 2. API: เพิ่มวัสดุใหม่ (เข้าได้เฉพาะ Admin เท่านั้น!)
-# ---------------------------------------------------------
-@router.post("/", response_model=MaterialResponse)
-def create_material(
-    material: MaterialCreate, # รับข้อมูลหน้ากากตอนสร้าง
+def _to_material_dict(mat, mat_type, stock, reserved_qty=0):
+    # ดักกรณีไม่มีแถวสต็อกค้างในระบบ ให้สต็อกเริ่มต้นเป็น 0
+    stock_qty = stock.quantity if stock else 0
+    return {
+        "mat_id": mat.mat_id,
+        "mat_code": mat.mat_code,
+        "mat_name": mat.mat_name,
+        # ดักกรณีประเภทวัสดุโดนลบหรือซ่อนไปแล้ว ไม่ให้โปรแกรมค้าง
+        "mat_type": mat_type.mat_type_name if mat_type else "ไม่ระบุประเภท",
+        "mat_type_id": mat.mat_type_id,
+        "unit_pack": mat.unit_pack,
+        "unit_sub": mat.unit_sub,
+        "mat_unit": mat.unit_sub,
+        "qty_per_pack": mat.qty_per_pack,
+        "price_per_pack": mat.price_per_pack,
+        "min_qty": mat.min_qty,
+        "balance_qty": stock_qty - int(reserved_qty or 0),
+        "maxStock": stock_qty,
+        "image": mat.image,
+        "is_active": mat.is_active,  # ส่งค่าสถานะกลับไปให้ Frontend แสดงผลปุ่มเปิด/ปิดใช้งานได้ถูกต้อง
+    }
+
+def _material_list_user(db):
+    reserved_sub = db.query(
+        MaterialReserved.mat_id,
+        func.sum(MaterialReserved.quantity).label("reserved_qty")
+    ).filter(MaterialReserved.status.in_([ReservedStatus.RESERVED, ReservedStatus.APPROVED]))\
+     .group_by(MaterialReserved.mat_id)\
+     .subquery()
+
+    results = db.query(Material, MaterialType, MaterialStock, reserved_sub.c.reserved_qty)\
+        .join(MaterialType, Material.mat_type_id == MaterialType.mat_type_id)\
+        .outerjoin(MaterialStock, Material.mat_id == MaterialStock.mat_id)\
+        .outerjoin(reserved_sub, Material.mat_id == reserved_sub.c.mat_id)\
+        .filter(Material.is_active == True)\
+        .all()
+
+    return [
+        _to_material_dict(mat, mat_type, stock, reserved_qty)
+        for mat, mat_type, stock, reserved_qty in results
+    ]
+
+
+def _material_list_admin(db):
+    results = db.query(Material, MaterialType, MaterialStock)\
+        .join(MaterialType, Material.mat_type_id == MaterialType.mat_type_id)\
+        .outerjoin(MaterialStock, Material.mat_id == MaterialStock.mat_id)\
+        .filter(Material.is_active == True)\
+        .all()
+
+    return [
+        _to_material_dict(mat, mat_type, stock)
+        for mat, mat_type, stock in results
+    ]
+
+
+@router.get("/admin")
+def get_materials_admin(
     db: Session = Depends(get_db),
-    admin_user: dict = Depends(verify_admin) # 🕵️‍♂️ ยามคนที่ 2 (เช็กว่าเป็น Admin ไหม)
+    admin_user: dict = Depends(verify_admin)
 ):
-    # 2.1 ตรวจสอบก่อนว่า "รหัสวัสดุ" (mat_code) ซ้ำกับในระบบไหม?
-    existing_mat = db.query(Material).filter(Material.mat_code == material.mat_code).first()
-    if existing_mat:
-        raise HTTPException(status_code=400, detail="รหัสวัสดุนี้มีในระบบแล้ว ไม่สามารถเพิ่มซ้ำได้")
+    return _material_list_admin(db)
 
-    # 2.2 แปลงข้อมูลจาก Pydantic Schema ให้กลายเป็น SQLAlchemy Model
-    # ทริค: **material.model_dump() เป็นการแตกข้อมูล JSON ออกมาใส่ Model อัตโนมัติ (ไม่ต้องพิมพ์จับคู่ทีละบรรทัด)
-    new_material = Material(**material.model_dump())
-    
-    # 2.3 บันทึกลงฐานข้อมูล
+
+@router.get("/admin/hidden")
+def get_hidden_materials(
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(verify_admin)
+):
+    results = db.query(Material, MaterialType, MaterialStock)\
+        .join(MaterialType, Material.mat_type_id == MaterialType.mat_type_id)\
+        .outerjoin(MaterialStock, Material.mat_id == MaterialStock.mat_id)\
+        .filter(Material.is_active == False)\
+        .all()
+
+    return [
+        _to_material_dict(mat, mat_type, stock)
+        for mat, mat_type, stock in results
+    ]
+
+
+@router.get("/admin/{mat_id}")
+def get_material_by_id_admin(
+    mat_id: int,
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(verify_admin)
+):
+    # เปลี่ยนเป็น .outerjoin() ทั้งหมด
+    result = db.query(Material, MaterialType, MaterialStock)\
+        .outerjoin(MaterialType, Material.mat_type_id == MaterialType.mat_type_id)\
+        .outerjoin(MaterialStock, Material.mat_id == MaterialStock.mat_id)\
+        .filter(Material.mat_id == mat_id)\
+        .first()
+
+    if not result or not result[0]:
+        raise HTTPException(status_code=404, detail="ไม่พบวัสดุนี้ในระบบ")
+
+    mat, mat_type, stock = result
+    return _to_material_dict(mat, mat_type, stock)
+
+@router.get("/")
+def get_materials(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    return _material_list_user(db)
+
+
+@router.post("/")
+async def create_material(
+    mat_code: str = Form(...),
+    mat_name: str = Form(...),
+    mat_type_id: int = Form(...),
+    unit_pack: str = Form(...),
+    qty_per_pack: int = Form(...),
+    unit_sub: str = Form(...),
+    price_per_pack: float = Form(...),
+    stock_qty: int = Form(0),
+    min_qty: int = Form(0),
+    image: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(verify_admin)
+):
+    if db.query(Material).filter(Material.mat_code == mat_code).first():
+        raise HTTPException(status_code=400, detail="รหัสวัสดุนี้มีในระบบแล้ว")
+
+    new_material = Material(
+        mat_code=mat_code,
+        mat_name=mat_name,
+        mat_type_id=mat_type_id,
+        unit_pack=unit_pack,
+        qty_per_pack=qty_per_pack,
+        unit_sub=unit_sub,
+        price_per_pack=price_per_pack,
+        min_qty=min_qty,
+    )
     db.add(new_material)
-    db.commit()
-    db.refresh(new_material) # ดึงข้อมูลล่าสุด (เช่น mat_id ที่เพิ่งถูกสร้าง) กลับมา
-    
-    return new_material
+    db.flush()
 
-    # ---------------------------------------------------------
-# 🟡 3. API: แก้ไขข้อมูลวัสดุ (เข้าได้เฉพาะ Admin)
-# ---------------------------------------------------------
+    if stock_qty > 0:
+        db.add(MaterialStock(mat_id=new_material.mat_id, quantity=stock_qty))
+
+    if image:
+        contents = await image.read()
+        ext = validate_image(contents, image.filename)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        filename = f"mat_{new_material.mat_id}.{ext}"
+        filepath = os.path.join(str(UPLOAD_DIR), filename)
+        with open(filepath, "wb") as f:
+            f.write(contents)
+        new_material.image = f"/static/materials/{filename}"
+
+    db.commit()
+    db.refresh(new_material)
+    return {"message": "เพิ่มวัสดุสำเร็จ", "mat_id": new_material.mat_id}
+
+
+@router.get("/{mat_id}")
+def get_material_by_id(
+    mat_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    reserved_qty = db.query(
+        func.sum(MaterialReserved.quantity)
+    ).filter(
+        MaterialReserved.mat_id == mat_id,
+        MaterialReserved.status.in_([ReservedStatus.RESERVED, ReservedStatus.APPROVED])
+    ).scalar() or 0
+
+    result = db.query(Material, MaterialType, MaterialStock)\
+        .join(MaterialType, Material.mat_type_id == MaterialType.mat_type_id)\
+        .outerjoin(MaterialStock, Material.mat_id == MaterialStock.mat_id)\
+        .filter(Material.mat_id == mat_id, Material.is_active == True)\
+        .first()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="ไม่พบวัสดุนี้")
+
+    mat, mat_type, stock = result
+    return _to_material_dict(mat, mat_type, stock, reserved_qty)
+
+
 @router.put("/{mat_id}", response_model=MaterialResponse)
 def update_material(
-    mat_id: int, 
-    material_update: MaterialCreate, # ใช้หน้ากากเดิมรับข้อมูลที่แก้แล้ว
+    mat_id: int,
+    material_update: MaterialUpdate,
     db: Session = Depends(get_db),
-    admin_user: dict = Depends(verify_admin) # 🕵️‍♂️ ยามเช็กว่าเป็น Admin
+    admin_user: dict = Depends(verify_admin)
 ):
-    # 3.1 ค้นหาวัสดุที่ต้องการแก้
     db_material = db.query(Material).filter(Material.mat_id == mat_id).first()
     if not db_material:
-        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลวัสดุที่ต้องการแก้ไข")
+        raise HTTPException(status_code=404, detail="ไม่พบวัสดุนี้")
 
-    # 3.2 เอาข้อมูลใหม่มาทับข้อมูลเดิม
-    update_data = material_update.model_dump()
+    update_data = material_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
-        setattr(db_material, key, value) # อัปเดตทีละฟิลด์
+        setattr(db_material, key, value)
 
-    # 3.3 บันทึกการเปลี่ยนแปลง
-    db.commit()
-    db.refresh(db_material)
+    try:
+        db.commit()
+        db.refresh(db_material)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"ไม่สามารถบันทึกข้อมูลได้: {str(e)}")
+
     return db_material
 
 
-# ---------------------------------------------------------
-# 🔴 4. API: ลบวัสดุ (Soft Delete - เข้าได้เฉพาะ Admin)
-# ---------------------------------------------------------
 @router.delete("/{mat_id}")
 def delete_material(
     mat_id: int,
     db: Session = Depends(get_db),
-    admin_user: dict = Depends(verify_admin) # 🕵️‍♂️ ยามเช็กว่าเป็น Admin
+    admin_user: dict = Depends(verify_admin)
 ):
-    # 4.1 ค้นหาวัสดุที่ต้องการลบ
     db_material = db.query(Material).filter(Material.mat_id == mat_id).first()
     if not db_material:
-        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลวัสดุที่ต้องการลบ")
+        raise HTTPException(status_code=404, detail="ไม่พบวัสดุนี้")
 
-    # 4.2 ทำการ "ลบหลอกๆ" (Soft Delete) โดยเปลี่ยนสถานะเป็น False
     db_material.is_active = False
-    db.commit()
-    
-    return {"message": f"ระงับการใช้งานวัสดุรหัส {db_material.mat_code} เรียบร้อยแล้ว"}
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"ไม่สามารถลบวัสดุได้: {str(e)}")
+
+    return {"message": f"ระงับการใช้งานวัสดุรหัส {db_material.mat_code} เรียบร้อย"}
+
+
+@router.patch("/{mat_id}/visibility")
+def toggle_material_visibility(
+    mat_id: int,
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(verify_admin)
+):
+    mat = db.query(Material).filter(Material.mat_id == mat_id).first()
+    if not mat:
+        raise HTTPException(status_code=404, detail="ไม่พบวัสดุนี้")
+
+    mat.is_active = not mat.is_active
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"เกิดข้อผิดพลาด: {str(e)}")
+
+    return {
+        "mat_id": mat_id,
+        "is_active": mat.is_active,
+        "message": "เปิดใช้งานแล้ว" if mat.is_active else "ปิดใช้งานแล้ว"
+    }

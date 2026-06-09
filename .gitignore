@@ -2,3 +2,15 @@ __pycache__/
 venv/
 env/
 .env
+# Database backups
+*.sql
+*.sql.gz
+*.dump
+
+# IDE settings
+.vscode/
+.idea/
+
+# Static uploads
+static/profiles/
+static/materials/
