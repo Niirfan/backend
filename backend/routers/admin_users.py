@@ -45,7 +45,7 @@ def get_all_users(
     search: Optional[str] = None,
     include_inactive: bool = Query(False),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=100),
     db: Session = Depends(get_db),
     admin_user: dict = Depends(verify_admin)
 ):
@@ -260,35 +260,35 @@ def reset_password(
     return {"message": f"เปลี่ยนรหัสผ่านพนักงาน {emp_code} เรียบร้อยแล้ว"}
 
 
-# @router.patch("/{emp_code}/restore", response_model=UserResponse)
-# def restore_user(
-#     emp_code: str,
-#     db: Session = Depends(get_db),
-#     admin_user: dict = Depends(verify_admin)
-# ):
-#     """กู้คืนบัญชีพนักงานที่ถูกปิดใช้งาน"""
-#     user = db.query(User).filter(User.emp_code == emp_code).first()
-#     if not user:
-#         raise HTTPException(status_code=404, detail=f"ไม่พบข้อมูลพนักงานรหัส {emp_code}")
+@router.patch("/{emp_code}/restore", response_model=UserResponse)
+def restore_user(
+    emp_code: str,
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(verify_admin)
+):
+    """กู้คืนบัญชีพนักงานที่ถูกปิดใช้งาน"""
+    user = db.query(User).filter(User.emp_code == emp_code).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"ไม่พบข้อมูลพนักงานรหัส {emp_code}")
 
-#     if user.is_active:
-#         raise HTTPException(status_code=400, detail="บัญชีผู้ใช้งานรายนี้เปิดใช้งานปกติอยู่แล้ว ไม่ต้องกู้คืน")
+    if user.is_active:
+        raise HTTPException(status_code=400, detail="บัญชีผู้ใช้งานรายนี้เปิดใช้งานปกติอยู่แล้ว ไม่ต้องกู้คืน")
 
-#     try:
-#         user.is_active = True
-#         db.commit()
-#         db.refresh(user)
-#     except Exception:
-#         db.rollback()
-#         logger.exception("Failed to restore_user emp_code=%s", emp_code)
-#         raise HTTPException(status_code=500, detail="เกิดข้อผิดพลาดภายในระบบ ไม่สามารถกู้คืนบัญชีได้")
+    try:
+        user.is_active = True
+        db.commit()
+        db.refresh(user)
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to restore_user emp_code=%s", emp_code)
+        raise HTTPException(status_code=500, detail="เกิดข้อผิดพลาดภายในระบบ ไม่สามารถกู้คืนบัญชีได้")
 
-#     return (
-#         db.query(User)
-#         .options(joinedload(User.branch))
-#         .filter(User.emp_code == emp_code)
-#         .first()
-#     )
+    return (
+        db.query(User)
+        .options(joinedload(User.branch))
+        .filter(User.emp_code == emp_code)
+        .first()
+    )
 
 
 @router.delete("/{emp_code}")

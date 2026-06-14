@@ -8,6 +8,7 @@ import {
   FaSearch,
   FaTimes,
 } from "react-icons/fa";
+import { useToast } from "../../context/ToastContext";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -57,6 +58,7 @@ function getFilenameFromResponse(res, fallback) {
 export default function MonthlyDetailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { showError } = useToast();
 
   const year = Number(searchParams.get("year"));
   const month = Number(searchParams.get("month"));
@@ -131,7 +133,7 @@ export default function MonthlyDetailPage() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("ไม่สามารถดาวน์โหลดรายการได้");
+      showError("ไม่สามารถดาวน์โหลดรายการได้");
     } finally {
       setDownloading(false);
     }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { FaFileAlt, FaTimes, FaClipboardList, FaClock, FaCheckCircle, FaBan, FaChevronRight, FaTrash } from "react-icons/fa";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../services/api";
+import { useToast } from "../../context/ToastContext";
 
 // ── Global styles ──────────────────────────────────────────────────
 if (!document.head.querySelector("#reqlist-v2")) {
@@ -86,6 +87,7 @@ function ConfirmDialog({ reqCode, onConfirm, onCancel, loading }) {
 // ── RequestCard ────────────────────────────────────────────────────
 function RequestCard({ request, onCancelSuccess }) {
   const navigate = useNavigate();
+  const { showError } = useToast();
   const [showConfirm, setShowConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -103,7 +105,7 @@ function RequestCard({ request, onCancelSuccess }) {
       setShowConfirm(false);
       onCancelSuccess(request.mat_req_id);
     } catch {
-      alert("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+      showError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
     } finally {
       setCancelling(false);
     }

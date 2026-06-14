@@ -5,6 +5,7 @@ import {
   FaCalendarAlt, FaCheckCircle, FaClock, FaBan,
   FaTimes, FaBoxOpen, FaEdit, FaTrash, FaSave
 } from "react-icons/fa";
+import { useToast } from "../../context/ToastContext";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -112,6 +113,7 @@ function MetaCard({ icon, label, value, accent }) {
 export default function RequestDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { showError } = useToast();
 
   const [request, setRequest] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -157,7 +159,7 @@ export default function RequestDetailPage() {
       document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      alert("เกิดข้อผิดพลาดในการดาวน์โหลด PDF");
+      showError("เกิดข้อผิดพลาดในการดาวน์โหลด PDF");
     } finally {
       setDownloading(false);
     }
@@ -198,7 +200,7 @@ export default function RequestDetailPage() {
       setEditMode(false);
       setRemovedIds(new Set());
     } catch (e) {
-      alert("เกิดข้อผิดพลาด: " + e.message);
+      showError("เกิดข้อผิดพลาด: " + e.message);
     } finally {
       setSaving(false);
     }

@@ -4,6 +4,7 @@ import { FaImage, FaArrowLeft, FaEdit, FaBoxOpen } from "react-icons/fa";
 import { HiChevronDown } from "react-icons/hi";
 import { MdVisibility, MdVisibilityOff } from "react-icons/md";
 import api from "../../services/api";
+import { useToast } from "../../context/ToastContext";
 
 const BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -37,6 +38,7 @@ if (!document.head.querySelector("#editmat-v2")) {
 export default function EditMaterial() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,7 +80,7 @@ export default function EditMaterial() {
       setIsHidden(d.is_active === false);
       if (d.image) setPreviewSrc(`${BASE_URL}${d.image}?ngrok-skip-browser-warning=true`);
       setLoading(false);
-    } catch { alert("โหลดข้อมูลไม่สำเร็จ"); navigate("/admin/materials"); }
+    } catch { showError("โหลดข้อมูลไม่สำเร็จ"); navigate("/admin/materials"); }
   };
 
   const handleChange = (e) => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
@@ -99,7 +101,7 @@ export default function EditMaterial() {
       setTogglingVisibility(true);
       await api.patch(`/materials/${id}/visibility`, { is_hidden: !isHidden });
       setIsHidden(p => !p);
-    } catch (err) { alert(err.response?.data?.detail || "เปลี่ยนสถานะไม่สำเร็จ"); }
+    } catch (err) { showError(err.response?.data?.detail || "เปลี่ยนสถานะไม่สำเร็จ"); }
     finally { setTogglingVisibility(false); }
   };
 
@@ -120,9 +122,9 @@ export default function EditMaterial() {
         const form = new FormData(); form.append("image", imageFile);
         await api.patch(`/materials/${id}/image`, form, { headers:{"Content-Type":"multipart/form-data"} });
       }
-      alert("บันทึกการแก้ไขสำเร็จ");
+      showSuccess("บันทึกการแก้ไขสำเร็จ");
       navigate("/admin/materials");
-    } catch (err) { alert(err.response?.data?.detail || "แก้ไขไม่สำเร็จ"); }
+    } catch (err) { showError(err.response?.data?.detail || "แก้ไขไม่สำเร็จ"); }
     finally { setSaving(false); }
   };
 

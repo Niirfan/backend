@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { FaBox, FaSearch, FaFileExcel, FaFilePdf, FaSync, FaTimes, FaBoxOpen } from "react-icons/fa";
+import { useToast } from "../../context/ToastContext";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 const POLLING_INTERVAL = 30000;
@@ -38,6 +39,7 @@ function StockBadge({ stock }) {
 }
 
 export default function InventoryList() {
+  const { showError } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +85,7 @@ export default function InventoryList() {
       a.download = `inventory_${new Date().toLocaleDateString("th-TH")}.${type === "excel" ? "xlsx" : "pdf"}`;
       a.click(); URL.revokeObjectURL(url);
     } catch {
-      alert(`ไม่สามารถดาวน์โหลด ${type.toUpperCase()} ได้`);
+      showError(`ไม่สามารถดาวน์โหลด ${type.toUpperCase()} ได้`);
     }
   };
 

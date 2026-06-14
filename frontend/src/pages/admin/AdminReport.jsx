@@ -49,7 +49,7 @@ async function exportReport(endpoint, format, filename, params = {}) {
     `${API_URL}/admin/report/${endpoint}/export?${query}`,
     { headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}`, "ngrok-skip-browser-warning": "true" } }
   );
-  if (!res.ok) return alert("ไม่สามารถ export ได้");
+  if (!res.ok) throw new Error("ไม่สามารถ export ได้");
   const blob = await res.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

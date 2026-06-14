@@ -3,6 +3,7 @@ import { FaImage, FaPlus, FaArrowLeft, FaBoxOpen } from "react-icons/fa";
 import { HiChevronDown } from "react-icons/hi";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import { useToast } from "../../context/ToastContext";
 
 // ── Global styles ──────────────────────────────────────────────────
 if (!document.head.querySelector("#addmat-v2")) {
@@ -31,6 +32,7 @@ if (!document.head.querySelector("#addmat-v2")) {
 
 export default function AddMaterial() {
   const navigate = useNavigate();
+  const { showSuccess, showError, showWarning } = useToast();
   const [loading, setLoading] = useState(false);
   const [materialTypes, setMaterialTypes] = useState([]);
   const [imageFile, setImageFile] = useState(null);
@@ -50,7 +52,7 @@ export default function AddMaterial() {
 
   const loadMaterialTypes = async () => {
     try { const res = await api.get("/material-type"); setMaterialTypes(res.data); }
-    catch { alert("โหลดประเภทวัสดุไม่สำเร็จ"); }
+    catch { showError("โหลดประเภทวัสดุไม่สำเร็จ"); }
   };
 
   const handleChange = (e) => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
@@ -64,7 +66,7 @@ export default function AddMaterial() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.mat_code || !formData.mat_name || !formData.mat_type_id) {
-      alert("กรุณากรอกข้อมูลให้ครบ"); return;
+      showWarning("กรุณากรอกข้อมูลให้ครบ"); return;
     }
     try {
       setLoading(true);
@@ -78,15 +80,15 @@ export default function AddMaterial() {
       }).forEach(([k,v]) => form.append(k, v));
       if (imageFile) form.append("image", imageFile);
       await api.post("/materials/", form, { headers:{"Content-Type":"multipart/form-data"} });
-      alert("เพิ่มวัสดุสำเร็จ");
+      showSuccess("เพิ่มวัสดุสำเร็จ");
       navigate("/admin/materials", { replace:true });
     } catch (err) {
-      alert(err.response?.data?.detail || "เพิ่มข้อมูลไม่สำเร็จ");
+      showError(err.response?.data?.detail || "เพิ่มข้อมูลไม่สำเร็จ");
     } finally { setLoading(false); }
   };
   
   const handleAddType = async () => {
-  if (!newTypeName.trim()) { alert("กรุณากรอกชื่อประเภท"); return; }
+  if (!newTypeName.trim()) { showWarning("กรุณากรอกชื่อประเภท"); return; }
   try {
     setSavingType(true);
     const res = await api.post("/material-type", { mat_type_name: newTypeName.trim() });
@@ -95,7 +97,7 @@ export default function AddMaterial() {
     setNewTypeName("");
     setShowNewType(false);
   } catch (err) {
-    alert(err.response?.data?.detail || "เพิ่มประเภทไม่สำเร็จ");
+    showError(err.response?.data?.detail || "เพิ่มประเภทไม่สำเร็จ");
   } finally {
     setSavingType(false);
   }

@@ -6,12 +6,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://pavestone-hexagram-emphasize.ngrok-free.dev',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
-        headers: {
-          'ngrok-skip-browser-warning': 'true',  // ✅ bypass ngrok warning page
-        },
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },

@@ -1,5 +1,6 @@
 import { FaEllipsisV, FaUsers, FaTrash, FaEdit, FaKey, FaUser, FaPlus, FaSearch, FaTimes, FaUndoAlt } from "react-icons/fa";
 import { useState, useEffect } from "react";
+import { useToast } from "../../context/ToastContext";
 
 if (!document.head.querySelector("#adminuser-v2")) {
   const s = document.createElement("style");
@@ -59,6 +60,7 @@ function Field({ label, children }) {
 }
 
 export default function AdminUserManagement() {
+  const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab]         = useState("ใช้งานอยู่");
   const [openMenuId, setOpenMenuId]       = useState(null);
   const [isEditOpen, setIsEditOpen]       = useState(false);
@@ -69,6 +71,15 @@ export default function AdminUserManagement() {
   const [branches, setBranches]           = useState([]);
   const [servicePoints, setServicePoints] = useState([]);
   const [search, setSearch]               = useState("");
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
+    confirmText: "",
+    cancelText: "",
+    type: "warning"
+  });
 
   const [newUser, setNewUser] = useState({
     emp_code:"", full_name:"", position:"",
@@ -120,27 +131,45 @@ export default function AdminUserManagement() {
     "ทั้งหมด":    users.length,
   };
 
-  const handleDelete = async (id, username) => {
-    if (!window.confirm("ต้องการลบผู้ใช้คนนี้ใช่หรือไม่?")) return;
-    try {
-      const r = await fetch(`${API}/admin/users/${username}`, { method:"DELETE", headers:hdr() });
-      if (!r.ok) throw new Error();
-      fetchUsers(); setOpenMenuId(null); alert("ลบผู้ใช้สำเร็จ");
-    } catch { alert("เกิดข้อผิดพลาด กรุณาลองใหม่"); }
+  const handleDelete = (id, username) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "ยืนยันการลบผู้ใช้",
+      message: `คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้ "${username}"?`,
+      type: "danger",
+      confirmText: "ลบผู้ใช้",
+      cancelText: "ยกเลิก",
+      onConfirm: async () => {
+        try {
+          const r = await fetch(`${API}/admin/users/${username}`, { method:"DELETE", headers:hdr() });
+          if (!r.ok) throw new Error();
+          fetchUsers(); setOpenMenuId(null); showSuccess("ลบผู้ใช้สำเร็จ");
+        } catch { showError("เกิดข้อผิดพลาด กรุณาลองใหม่"); }
+      }
+    });
   };
 
-  const handleRestore = async (username) => {
-    if (!window.confirm("ต้องการกู้คืนผู้ใช้คนนี้ใช่หรือไม่?")) return;
-    try {
-      const r = await fetch(`${API}/admin/users/${username}/restore`, { method:"PATCH", headers:hdr() });
-      console.log("RESTORE status:", r.status);
-      if (!r.ok) {
-        const err = await r.json();
-        console.log("RESTORE error:", err);
-        throw new Error();
+  const handleRestore = (username) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "ยืนยันการกู้คืนผู้ใช้",
+      message: `คุณแน่ใจหรือไม่ว่าต้องการกู้คืนผู้ใช้ "${username}"?`,
+      type: "success",
+      confirmText: "กู้คืน",
+      cancelText: "ยกเลิก",
+      onConfirm: async () => {
+        try {
+          const r = await fetch(`${API}/admin/users/${username}/restore`, { method:"PATCH", headers:hdr() });
+          console.log("RESTORE status:", r.status);
+          if (!r.ok) {
+            const err = await r.json();
+            console.log("RESTORE error:", err);
+            throw new Error();
+          }
+          fetchUsers(); setOpenMenuId(null); showSuccess("กู้คืนผู้ใช้สำเร็จ");
+        } catch { showError("เกิดข้อผิดพลาด กรุณาลองใหม่"); }
       }
-      fetchUsers(); setOpenMenuId(null); alert("กู้คืนผู้ใช้สำเร็จ");
-    } catch { alert("เกิดข้อผิดพลาด กรุณาลองใหม่"); }
+    });
   };
 
   const handleSaveEdit = async () => {
@@ -154,8 +183,8 @@ export default function AdminUserManagement() {
         }),
       });
       if (!r.ok) throw new Error();
-      fetchUsers(); setIsEditOpen(false); alert("อัปเดตข้อมูลสำเร็จ");
-    } catch { alert("เกิดข้อผิดพลาด กรุณาลองใหม่"); }
+      fetchUsers(); setIsEditOpen(false); showSuccess("อัปเดตข้อมูลสำเร็จ");
+    } catch { showError("เกิดข้อผิดพลาด กรุณาลองใหม่"); }
   };
 
   const handleAddUser = async () => {
@@ -167,13 +196,33 @@ export default function AdminUserManagement() {
       if (!r.ok) { const e = await r.json(); throw new Error(JSON.stringify(e)); }
       fetchUsers(); setIsAddOpen(false);
       setNewUser({ emp_code:"", full_name:"", position:"", branch_id:"", service_point_id:"", phone:"", email:"", password:"", user_role:"User", can_request:false });
-      alert("เพิ่มผู้ใช้สำเร็จ");
-    } catch(e) { alert("เกิดข้อผิดพลาด: " + e.message); }
+      showSuccess("เพิ่มผู้ใช้สำเร็จ");
+    } catch(e) { showError("เกิดข้อผิดพลาด: " + e.message); }
   };
 
   const handleResetPassword = (username) => {
-    alert(`รีเซ็ตรหัสผ่านของ ${username} เป็น '123456' เรียบร้อยแล้ว`);
-    setOpenMenuId(null);
+    setConfirmDialog({
+      isOpen: true,
+      title: "ยืนยันการรีเซ็ตรหัสผ่าน",
+      message: `คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตรหัสผ่านของ "${username}" เป็น "123456"?`,
+      type: "warning",
+      confirmText: "รีเซ็ต",
+      cancelText: "ยกเลิก",
+      onConfirm: async () => {
+        try {
+          const r = await fetch(`${API}/admin/users/${username}/reset-password`, {
+            method: "PATCH",
+            headers: hdr(true),
+            body: JSON.stringify({ new_password: "123456" }),
+          });
+          if (!r.ok) throw new Error();
+          setOpenMenuId(null);
+          showSuccess(`รีเซ็ตรหัสผ่านของ ${username} เป็น '123456' เรียบร้อยแล้ว`);
+        } catch {
+          showError("เกิดข้อผิดพลาดในการรีเซ็ตรหัสผ่าน");
+        }
+      }
+    });
   };
 
   const ROLE_BADGE = { Admin:{ bg:"#fdf4ff", text:"#7e22ce" }, Superadmin:{ bg:"#fee2e2", text:"#dc2626" } };
@@ -258,7 +307,7 @@ export default function AdminUserManagement() {
                 ) : filtered.map(user => {
                   const roleCfg = ROLE_BADGE[user.role];
                   return (
-                    <tr key={user.id} className={`user-row border-t ${!user.isActive ? "opacity-50" : ""}`}
+                    <tr key={user.id} className={`user-row border-t ${!user.isActive && activeTab !== "ถูกลบแล้ว" ? "opacity-50" : ""}`}
                       style={{ borderColor:"#e8f5e9" }}>
                       <td className="py-3.5 px-4 text-center">
                         <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background:"#f4f6f4", color:"#6b7280" }}>
@@ -525,6 +574,49 @@ export default function AdminUserManagement() {
                 <button onClick={handleAddUser}
                   className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white"
                   style={{ background:"#2e7d32" }}>เพิ่มผู้ใช้</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ CUSTOM CONFIRM DIALOG ═════════════════════════════════════ */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}>
+          <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl modal-enter"
+            onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className={`w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-4 ${
+                confirmDialog.type === "danger" ? "bg-red-50 text-red-600" :
+                confirmDialog.type === "warning" ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+              }`}>
+                {confirmDialog.type === "danger" ? <FaTrash size={20}/> :
+                 confirmDialog.type === "warning" ? <FaKey size={20}/> : <FaUndoAlt size={20}/>}
+              </div>
+              <h3 className="text-base font-bold text-gray-900 mb-2">{confirmDialog.title}</h3>
+              <p className="text-sm text-gray-500 mb-6">{confirmDialog.message}</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold border transition"
+                  style={{ borderColor: "#c8e6c9", color: "#2e7d32", background: "#fff" }}
+                >
+                  {confirmDialog.cancelText || "ยกเลิก"}
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirmDialog.onConfirm) confirmDialog.onConfirm();
+                    setConfirmDialog({ ...confirmDialog, isOpen: false });
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
+                  style={{
+                    background: confirmDialog.type === "danger" ? "#dc2626" :
+                                confirmDialog.type === "warning" ? "#d97706" : "#2e7d32"
+                  }}
+                >
+                  {confirmDialog.confirmText || "ยืนยัน"}
+                </button>
               </div>
             </div>
           </div>

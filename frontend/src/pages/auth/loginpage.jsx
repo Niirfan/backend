@@ -3,11 +3,13 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MyLogo from "../../assets/mylogo.png";
 import api from '../../services/api';
+import { useToast } from "../../context/ToastContext";
 
 export default function LoginPage() {
   const [empCode, setEmpCode] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -31,7 +33,7 @@ export default function LoginPage() {
         emp_code: empCode
       }));
 
-      alert("ล็อกอินสำเร็จ!");
+      showSuccess("ล็อกอินสำเร็จ!");
 
       if (roleFromBackend === "Admin" || roleFromBackend === "Superadmin") {
         navigate('/admin/dashboard');
@@ -41,7 +43,7 @@ export default function LoginPage() {
 
     } catch (error) {
       const msg = error.response?.data?.detail || "รหัสพนักงานหรือรหัสผ่านไม่ถูกต้อง";
-      alert(msg);
+      showError(msg);
     }
   };
 

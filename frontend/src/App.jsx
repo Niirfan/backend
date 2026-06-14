@@ -1,4 +1,5 @@
 import { CartProvider } from "./context/CartContext";
+import { ToastProvider } from "./context/ToastContext";
 import Sidebar from "./components/sidebar";
 import Topbar from "./components/topbar";
 import AdminSidebar from "./pages/admin/adminsidebar";
@@ -13,6 +14,7 @@ export default function App() {
   const isAdminPage = location.pathname.startsWith("/admin");
 
   return (
+    <ToastProvider>
     <CartProvider>
       {isLoginPage ? (
         /* 1. หน้า Login */
@@ -46,5 +48,6 @@ export default function App() {
         </RequireAuth>
       )}
     </CartProvider>
+    </ToastProvider>
   );
 }
